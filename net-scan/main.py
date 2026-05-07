@@ -1,16 +1,47 @@
 from scapy.all import *
-import os
+import os, socket, sys
 from datetime import datetime
-#Threadpool:
 from concurrent.futures import *
-import socket
 import subprocess as sp
+#Console
+from rich.console import Console
+from rich.table import Table
+from rich.prompt import IntPrompt
+
+# ==== Handle Arguments ====
+argv = sys.argv[1:]
+enable_port_scans = False
+enable_device_name = False
+
+if '-p' in sys.argv:
+    enable_port_scans = True
+
+if '-d' in sys.argv:
+    enable_device_name = True
+
+if '-o' in sys.argv:
+    idx = (sys.argv).index("-o")
+
+    output_file = sys.argv[idx+1]
+    print("Outfile: ", output_file)
 
 # ==== SETUP ====
+console = Console()
+
+#Create table
+table = Table(title="Scan Results")
+table.add_column("IP Address", style="green")
+table.add_column("MAC Address", style="yellow")
+table.add_column("Vendor", style="white")
+table.add_column("Device name", style="light_sky_blue1")
+table.add_column("Open ports", style="white")
+
 #Networking Variables
-NETWORK = os.getenv("network")
-INTERFACE = os.getenv("ETHER_IFACE")
-#INTERFACE = os.getenv("WIFI_IFACE")
+NETWORK = os.getenv("NETWORK")
+INTERFACE = os.getenv("INTERFACE")
+
+console.print(f"[bold green]Interface: [/bold green][white]{str(INTERFACE)}[/white]")
+console.print(f"[bold green]Network: [/bold green][white]{str(NETWORK)}[/white]")
 
 #Set the desired NIC interface
 conf.iface = INTERFACE
@@ -33,9 +64,11 @@ def get_devices():
 
     return devices
 
-
 def open_ports(ip):
     open_ports = []
+
+    if not enable_port_scans:
+        return open_ports
 
     for port in PORTS:
         try:
@@ -69,7 +102,6 @@ def nbtstat(ip):
         return None
 
 # =========================
-
 def load_oui():
     #Parses oui into a dict
     oui_dict = {}
@@ -92,19 +124,27 @@ def get_vendor(mac, vendors_dict):
     return vendors_dict.get(prefix)
 
 def handle_functions(ip, mac):
+    row_data = []
     data = [ip, mac]
     ports = open_ports(ip)
-    vendor = get_vendor(mac, vendors_dict)
+    vendor = get_vendor(mac, vendors_dict) #Vendor Name ()
+
     # === Get pc Name ===
     name = rDNS(ip)
-
+    """
+    Skip for testing (Slow)
     if not name:
+        console.print("[bold red][*] Checking nbtstat...[/bold red]")
         name = nbtstat(ip) #Only works for windows PC works
-
+    """
     data.append(vendor)
     data.append(name)
     data.append(ports)
 
+    #[MAC, IP, Vendor Name, Device Name (if applicable)]
+
+    #console.print(f"[bold red]DEBUG: {data}[/bold red]")
+    table.add_row(str(ip), str(mac), str(vendor), str(name), str(ports))
     return data
 
 def print_compact(result):
@@ -124,7 +164,6 @@ def print_detailed(result):
 # ==== MAIN ====
 
 #Create the exectuor:
-
 devices = get_devices()
 vendors_dict = load_oui()
 start_time = datetime.now()
@@ -146,7 +185,7 @@ with ThreadPoolExecutor(max_workers=128) as executer:
         print_compact(result)
 
 
-
+console.print(table)
 
 end_time = datetime.now()
 

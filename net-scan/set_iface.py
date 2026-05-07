@@ -1,4 +1,4 @@
-import sys, os, platform, subprocess
+import sys, os, platform, subprocess, socket
 from pathlib import Path
 from scapy.all import *
 
@@ -20,6 +20,7 @@ if not (IS_WINDOWS or IS_LINUX):
 #==== Interface Configuration ====
 interfaces = conf.ifaces #Get dict of interfaces
 iface_list = list(interfaces.keys())
+iface_ips = []
 
 #Create display Table
 table = Table(title="Network Interfaces")
@@ -28,8 +29,11 @@ table.add_column("Interface",style="green")
 table.add_column("IP Address",style="yellow")
 table.add_column("MAC Address", style="red")
 
+index = 0
 for idx, iface_info in interfaces.items():
-    table.add_row(str(iface_info.index), iface_info.name, str(iface_info.ip), iface_info.mac)
+    index += 1
+    table.add_row(str(index), iface_info.name, str(iface_info.ip), iface_info.mac)
+    iface_ips.append(iface_info.ip)
 
 #Display Table to user:
 console.print(table)
@@ -45,11 +49,22 @@ while True:
 
     #On valid interface selection, exit the loop
     interface = iface_list[choice-1]
+    network = iface_ips[choice-1]
+
+    #format network from ip:
+
+    #Temp / Testing??:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip = s.getsockname()[0]
+    s.close()
+    print("NEW IP: ", ip)
+
+    network = network.split('.')
+    network[3] = '0/24'
+    network = '.'.join(network)
     console.print(f"Network interface set to [green]{interface}[/green]")
     break
-
-#Set the env variable (Only works for this session!)
-#os.environ["Interface"] = iface_list[choice-1]
 
 #==== Set Env Variables (Persistant) ====
 
@@ -58,34 +73,57 @@ if IS_LINUX:
 
     #Check for existing env var:
     bashrc_path = Path.home() / ".bashrc"
-    var_line = f'export INTERFACE=i\"{interface}\"\n'
+    var_line = f'export INTERFACE=\"{interface}\"\n'
+    net_line = f'export NETWORK=\"{network}\"\n'
 
     #read file
-    content = bashrc_path.read_text().split_lines()
-    found = False
+    content = bashrc_path.read_text().splitlines()
+    found_int = False
+    found_net = False
     new_content = []
 
     for line in content:
         #Check if an interface already exists in the file
         if line.startswith("export INTERFACE="):
             new_content.append(var_line)
+            found_int = True
+        #Check if a network already exists
+        elif line.startswith("export NETWORK="):
+            new_content.append(net_line)
+            found_net = True
+        
+        #If not varline, copy over
+        else:
+            new_content.append(line)
+
+    #append to existing file if they do not exist
+    if not found_int:
+        new_content.append(var_line)
+
+    if not found_net:
+        new_content.append(net_line)
+
+    #Write back to bashrc file
+    with open(bashrc_path, 'w') as f:
+        f.write('\n'.join(new_content) + '\n')
+
+    """ #DEBUG 
+    console.print("[bold yellow]==== bashrc ====[/bold yellow]")
+    for line in new_content:
+        console.print(f"[cyan]{line}[/cyan]")
+    """
+    console.print("run  [bold yellow]source ~/.bashrc[/bold yellow] for changes to take affect.")
 
 
-"""
-    #Write to bashrc file
-    cmd = f"echo \'export INTERFACE=\"{interface}i\"\' >> ~/.bashrc"
-    subprocess.run(cmd, shell=True)
-    
-    #source terminal to load new env var:
-    subprocess.run("source ~/.bashrc", shell=True)
-
-    #DEBUG: Print out env var
-    var_content = os.getenv("INTERFACE") 
-    console.print(f"INTERFACE: [green]{var_content}[/green]")
-""" 
 elif IS_WINDOWS:
-    pass
-
+    #Set Env Variables
+    subprocess.run(["setx", "INTERFACE", interface], shell=True, 
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL)
+    subprocess.run(["setx", "NETWORK", network], shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL)
+    console.print("Please restart console for change to take effect.")
 
 sys.exit()
 
