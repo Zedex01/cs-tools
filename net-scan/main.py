@@ -1,5 +1,5 @@
 from scapy.all import *
-import os, socket, sys
+import os, socket, sys, platform
 from datetime import datetime
 from concurrent.futures import *
 import subprocess as sp
@@ -7,18 +7,23 @@ import subprocess as sp
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import IntPrompt
+# ==== platform ====
+system_os = platform.system()
 
 # ==== Handle Arguments ====
 argv = sys.argv[1:]
 enable_port_scans = False
 enable_device_name = False
 
+#Enable Port Scanning
 if '-p' in sys.argv:
     enable_port_scans = True
 
+#Enable device name check
 if '-d' in sys.argv:
     enable_device_name = True
 
+#Save to Output File (csv)
 if '-o' in sys.argv:
     idx = (sys.argv).index("-o")
 
@@ -28,17 +33,16 @@ if '-o' in sys.argv:
 # ==== SETUP ====
 console = Console()
 
-#Create table
-table = Table(title="Scan Results")
-table.add_column("IP Address", style="green")
-table.add_column("MAC Address", style="yellow")
-table.add_column("Vendor", style="white")
-table.add_column("Device name", style="light_sky_blue1")
-table.add_column("Open ports", style="white")
+console.print(f"[bold green]{system_os}[/bold green]")
 
 #Networking Variables
 NETWORK = os.getenv("NETWORK")
 INTERFACE = os.getenv("INTERFACE")
+
+if not NETWORK:
+    NETWORK ="192.168.40.0/24"
+if not INTERFACE:
+    INTERFACE ="lo"
 
 console.print(f"[bold green]Interface: [/bold green][white]{str(INTERFACE)}[/white]")
 console.print(f"[bold green]Network: [/bold green][white]{str(NETWORK)}[/white]")
@@ -50,6 +54,7 @@ conf.iface = INTERFACE
 PORTS = [80, 443, 21, 22,  25, 110, 143, 993, 3389, 445, 135, 3306, 1433, 123, 139, 554, 5900, 1433, 1434, 3306]
 
 #==== FUNCTIONS ====
+#Get IP and MAC
 def get_devices():
     #Returns a list of all device ips
 
@@ -64,6 +69,7 @@ def get_devices():
 
     return devices
 
+# Check Open Ports
 def open_ports(ip):
     open_ports = []
 
@@ -78,7 +84,8 @@ def open_ports(ip):
             pass
     
     return open_ports
-# === Get Device Name ===
+
+#Get Device name (DNS)
 def rDNS(ip):
     #The DNS must be setup on network, 
     # often not useable on home/non-configured networks
@@ -87,6 +94,7 @@ def rDNS(ip):
     except:
         return None
 
+#Get Device Name (nbtStat)
 def nbtstat(ip):
     #Command that returns device name
     cmd = ['nbtstat', '-A', ip]
@@ -101,7 +109,7 @@ def nbtstat(ip):
     except:
         return None
 
-# =========================
+#Load Vendor Dictionary
 def load_oui():
     #Parses oui into a dict
     oui_dict = {}
@@ -115,6 +123,7 @@ def load_oui():
     
     return oui_dict
 
+#Get Vendor Name
 def get_vendor(mac, vendors_dict):
     if not mac:
         return None
@@ -123,9 +132,10 @@ def get_vendor(mac, vendors_dict):
 
     return vendors_dict.get(prefix)
 
-def handle_functions(ip, mac):
-    row_data = []
-    data = [ip, mac]
+# ==== Main Proc Handler ====
+def handle_functions(ip, mac) -> list: #Returns a single row of data?
+    #row_data = []
+    row = [ip, mac]
     ports = open_ports(ip)
     vendor = get_vendor(mac, vendors_dict) #Vendor Name ()
 
@@ -137,16 +147,76 @@ def handle_functions(ip, mac):
         console.print("[bold red][*] Checking nbtstat...[/bold red]")
         name = nbtstat(ip) #Only works for windows PC works
     """
-    data.append(vendor)
-    data.append(name)
-    data.append(ports)
 
-    #[MAC, IP, Vendor Name, Device Name (if applicable)]
+    #Format 'None' as <Blank>
+    if not vendor:
+        vendor = ""
+    if not name:
+        name = ""
 
-    #console.print(f"[bold red]DEBUG: {data}[/bold red]")
-    table.add_row(str(ip), str(mac), str(vendor), str(name), str(ports))
-    return data
+    row.append(vendor)
+    row.append(name)
+    row.append(ports)
 
+    #[MAC, IP, Vendor Name, Device Name (if applicable), Open Ports]
+    return row
+
+#Get num value of a row of data
+def get_row_value(row:list) -> int:
+    #Check Value
+    ip = row[0]
+    value = int((ip.split('.'))[-1])
+    return value
+
+#Sort Rows
+def sort_rows(rows:list) -> list:
+    sorted_rows = []
+
+    for row in rows:
+
+        #Get Row value
+        val = get_row_value(row)
+        #print("new_val: ", val)
+        placed = False
+
+        #if no rows in sorted, add row:
+        if len(sorted_rows) == 0:
+            sorted_rows.append(row)
+            placed = True
+            #print("Placed @ 0")
+
+
+        #print("sorted_rows[0] val:", get_row_value(sorted_rows[0]))
+
+        if not placed:
+            #If value smaller than index 0, prepend:
+           # print(f"Checking for prepend: new_val: {val}, srt_rw_val:{get_row_value(sorted_rows[0])}")
+            if val < get_row_value(sorted_rows[0]):
+                sorted_rows.insert(0, row) #Insert row to beginning
+                #print(f"INSERTED: {val} [prepended!]")
+                placed = True
+
+        if not placed:
+            #print("sorted row enumeration...")
+            #Starting at index 0, itter through each entry in sorted_rows:
+            for idx, sorted_row in enumerate(sorted_rows):
+                #If the value is larger, insert at that location (pushes larger value +1 idx)
+                #print(f"\tComparing new_val: {val}, against srt_rw_val:{get_row_value(sorted_row)}, idx: {idx}")
+                if get_row_value(sorted_row) > val:
+                    sorted_rows.insert(idx, row) 
+                    placed = True
+                    #print(f"INSERTED: {val} @ idx: {idx}")
+                    #console.print(f"[light_sky_blue1]{sorted_rows}[/light_sky_blue1]")
+                    break
+
+        #If was not placed, put at end:
+        if not placed:
+            sorted_rows.append(row)
+            #print(f"INSERTED: {val} [end]")
+
+    return sorted_rows
+
+# ==== Output Styles ====
 def print_compact(result):
     print(result[3], " | ",result[2], " | ",result[0], " | ",result[1], " | ",result[4])
 
@@ -161,17 +231,33 @@ def print_detailed(result):
     print("MAC: ", result[1])
     print("Open Ports: ", result[4])
     print()
-# ==== MAIN ====
 
+
+def _setup_table() -> Table:
+    table = Table(title="Scan Results")
+    table.add_column("IP Address", style="green")
+    table.add_column("MAC Address", style="yellow")
+    table.add_column("Vendor", style="white")
+    table.add_column("Device name", style="light_sky_blue1")
+    table.add_column("Open ports", style="white")
+    return table
+
+# ==== MAIN ====
 #Create the exectuor:
 devices = get_devices()
 vendors_dict = load_oui()
 start_time = datetime.now()
 
+console.print("Performing Scan...")
+
+#Contains all the output rows:
+
+rows = []
 #max_workers is max # of threads, for lan sockets:(50-64)
 with ThreadPoolExecutor(max_workers=128) as executer:
     #futures contains the results of everything
     futures = []
+
 
     #For each ip, submit a request to use afunction
     for device in devices:
@@ -182,15 +268,24 @@ with ThreadPoolExecutor(max_workers=128) as executer:
 
     for future in as_completed(futures):
         result = future.result()
-        print_compact(result)
+        #print_compact(result)
 
+        #Add each row to rows:
+        rows.append(result)
+#Print out all rows
+#print(rows)
 
+table = _setup_table()
+
+rows = sort_rows(rows)
+
+for row in rows:
+    table.add_row(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]))
+
+#Print Scan to User
 console.print(table)
 
+
 end_time = datetime.now()
-
 time_elapsed = end_time - start_time
-
 print(f"Done in {time_elapsed}.")
-
-
