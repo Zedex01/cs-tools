@@ -7,6 +7,8 @@ import subprocess as sp
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import IntPrompt
+
+from pathlib import Path
 # ==== platform ====
 system_os = platform.system()
 
@@ -39,6 +41,8 @@ console.print(f"[bold green]{system_os}[/bold green]")
 NETWORK = os.getenv("NETWORK")
 INTERFACE = os.getenv("INTERFACE")
 
+
+#Temp
 if not NETWORK:
     NETWORK ="192.168.40.0/24"
 if not INTERFACE:
@@ -109,11 +113,24 @@ def nbtstat(ip):
     except:
         return None
 
+
+def _get_vendor_file_location(relative_path:str) -> str:
+
+    if getattr(sys, "frozen", False):
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).resolve().parent
+
+    return base_path / relative_path
+
 #Load Vendor Dictionary
 def load_oui():
+    #file = "oui.txt"
+    file = _get_vendor_file_location("oui.txt")
+
     #Parses oui into a dict
     oui_dict = {}
-    with open("oui.txt", "r", encoding="utf-8", errors="ignore") as f:
+    with open(file, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             if "(hex)" in line:
                 parts = line.split()
@@ -231,7 +248,6 @@ def print_detailed(result):
     print("MAC: ", result[1])
     print("Open Ports: ", result[4])
     print()
-
 
 def _setup_table() -> Table:
     table = Table(title="Scan Results")
