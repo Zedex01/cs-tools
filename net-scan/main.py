@@ -9,6 +9,22 @@ from rich.table import Table
 from rich.prompt import IntPrompt
 
 from pathlib import Path
+
+#Allows system to guess the most probable network on its own
+def _determine_network() -> str:
+    #Reachout to google dns and capture the ip of the local pc.
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip = s.getsockname()[0]
+    s.close()
+
+    #Reformat the capture IP into the network format
+    ip = ip.split(".")
+    ip[-1] = '0/24'
+    network = ".".join(ip)
+
+    return network
+
 # ==== platform ====
 system_os = platform.system()
 
@@ -32,22 +48,17 @@ if '-o' in sys.argv:
     output_file = sys.argv[idx+1]
     print("Outfile: ", output_file)
 
+#Set Network
 if '-n' in sys.argv:
     idx = (sys.argv).index("-n")
     NETWORK = str(sys.argv[idx+1])
+
 else:
-    NETWORK = os.getenv("NETWORK")
+    NETWORK = _determine_network()
 
 
-def _init_conn():
-    #Temp / Testing??:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    ip = s.getsockname()[0]
-    print(s.getsockname())
-    s.close()
-    print("NEW IP: ", ip)
-    #exit()
+
+
 
 # ==== SETUP ====
 console = Console()
