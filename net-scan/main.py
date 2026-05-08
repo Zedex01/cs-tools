@@ -32,32 +32,44 @@ if '-o' in sys.argv:
     output_file = sys.argv[idx+1]
     print("Outfile: ", output_file)
 
+if '-n' in sys.argv:
+    idx = (sys.argv).index("-n")
+    NETWORK = str(sys.argv[idx+1])
+else:
+    NETWORK = os.getenv("NETWORK")
+
+
+def _init_conn():
+    #Temp / Testing??:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(("8.8.8.8", 80))
+    ip = s.getsockname()[0]
+    print(s.getsockname())
+    s.close()
+    print("NEW IP: ", ip)
+    #exit()
+
 # ==== SETUP ====
 console = Console()
 
-console.print(f"[bold green]{system_os}[/bold green]")
+console.print(f"[bold green]System: [/bold green]{system_os}")
 
 #Networking Variables
-NETWORK = os.getenv("NETWORK")
-INTERFACE = os.getenv("INTERFACE")
+#NETWORK = os.getenv("NETWORK")
+#INTERFACE = os.getenv("INTERFACE")
 
 
-#Temp
-if not NETWORK:
-    NETWORK ="192.168.40.0/24"
-if not INTERFACE:
-    INTERFACE ="lo"
-
-console.print(f"[bold green]Interface: [/bold green][white]{str(INTERFACE)}[/white]")
+#console.print(f"[bold green]Interface: [/bold green][white]{str(INTERFACE)}[/white]")
 console.print(f"[bold green]Network: [/bold green][white]{str(NETWORK)}[/white]")
 
 #Set the desired NIC interface
-conf.iface = INTERFACE
+#conf.iface = INTERFACE
 
 #common ports
 PORTS = [80, 443, 21, 22,  25, 110, 143, 993, 3389, 445, 135, 3306, 1433, 123, 139, 554, 5900, 1433, 1434, 3306]
 
 #==== FUNCTIONS ====
+
 #Get IP and MAC
 def get_devices():
     #Returns a list of all device ips
