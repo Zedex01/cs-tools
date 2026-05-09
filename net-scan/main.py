@@ -19,11 +19,11 @@ def _determine_network() -> str:
     s.close()
 
     #Reformat the capture IP into the network format
-    ip = ip.split(".")
-    ip[-1] = '0/24'
-    network = ".".join(ip)
+    net = ip.split(".")
+    net[-1] = '0/24'
+    network = ".".join(net)
 
-    return network
+    return network, ip
 
 # ==== platform ====
 system_os = platform.system()
@@ -54,7 +54,7 @@ if '-n' in sys.argv:
     NETWORK = str(sys.argv[idx+1])
 
 else:
-    NETWORK = _determine_network()
+    NETWORK, IP = _determine_network()
 
 
 
@@ -67,19 +67,49 @@ console.print(f"[bold green]System: [/bold green]{system_os}")
 
 #Networking Variables
 #NETWORK = os.getenv("NETWORK")
-#INTERFACE = os.getenv("INTERFACE")
+INTERFACE = os.getenv("INTERFACE")
 
 
 #console.print(f"[bold green]Interface: [/bold green][white]{str(INTERFACE)}[/white]")
+console.print(f"[bold green]IP: [/bold green][white]{str(IP)}[/white]")
 console.print(f"[bold green]Network: [/bold green][white]{str(NETWORK)}[/white]")
 
 #Set the desired NIC interface
-#conf.iface = INTERFACE
+conf.iface = INTERFACE
 
 #common ports
 PORTS = [80, 443, 21, 22,  25, 110, 143, 993, 3389, 445, 135, 3306, 1433, 123, 139, 554, 5900, 1433, 1434, 3306]
 
 #==== FUNCTIONS ====
+def syn_scan(network):
+    alive = []
+    pkts = []
+    ip_start = ".".join((network.split("."))[:-1])
+    for i in range(1,255):
+        ip = ip_start + f".{i}"
+        pkts.append(scapy.all.IP(dst=ip)/TCP(dport=80, flags="S"))
+
+    ans, _ = sr(pkts, iface=INTERFACE, timeout=0.2, verbose = False)
+
+    alive = set()
+    for sent ,recv in ans:
+        alive.add(recv[IP].src)
+
+    return list(alive)
+
+#alive = syn_scan(NETWORK)
+
+#for ip in alive:
+#    print(ip)
+
+def ping_scan(network):
+    ip_start = ".".join((network.split("."))[:-1])
+    for i in range(1,255):
+        ip = ip_start + f".{i}"
+        result = subprocess.run(
+                ["ping", "-c", "1", "-W", "1", ip],
+                capture_output=True, text=True)
+        print(result.stdout)
 
 #Get IP and MAC
 def get_devices():
@@ -89,7 +119,7 @@ def get_devices():
 
     #Broadcast ARP request to all devices on network:
     pkt = Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=NETWORK)
-    resp = srp(pkt, timeout=2, verbose=False)[0]
+    resp = srp(pkt, timeout=5, retry=2, verbose=False)[0]
     
     for sent, recv in resp:
         devices.append((recv.psrc, recv.hwsrc))
